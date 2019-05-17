@@ -31,6 +31,35 @@ from pypass.entry_type import EntryType
 from pypass import PasswordStore
 
 
+def is_writeable(config, path, force):
+    '''Checks whether writing to `path` is permitted
+
+    If `force` is `True` or `path` doesn't exist, it is certainly writeable.
+    Otherwise it's writeable if the user permits it by answering a prompt.
+
+    :param config: `click.Context.obj` containing the store instance.
+    :param path: The relative path of the manipulated file.
+    :param force: A `bool` flag. If set, overwrite is forced without asking.
+    :returns: `True`, iif `path` doesn't exist or it can be overwritten.
+    '''
+    if force:
+        return True
+
+    real_path = os.path.realpath(
+        os.path.join(config['password_store'].path, path + '.gpg')
+    )
+    if not os.path.isfile(real_path):
+        return True
+
+    answer = click.prompt(
+        'An entry already exists for %s. Overwrite it' % path,
+        prompt_suffix='? [y/N] ',
+        default='n',
+        show_default=False
+    )
+    return answer in ('y', 'Y')
+
+
 @click.group(invoke_without_command=True)
 @click.option('--PASSWORD_STORE_DIR',
               envvar='PASSWORD_STORE_DIR',
@@ -90,12 +119,16 @@ def init(path, clone, gpg_id):
 @main.command()
 @click.option('--echo', '-e', is_flag=True)
 @click.option('--multiline', '-m', is_flag=True)
+@click.option('--force', '-f', is_flag=True)
 @click.argument('path', type=click.STRING)
 @click.pass_obj
-def insert(config, path, echo, multiline):
+def insert(config, path, echo, multiline, force):
 
     if echo and multiline:
         sys.exit('--echo and --multiline are mutually exclusive.')
+
+    if not is_writeable(config, path, force):
+        sys.exit()
 
     if multiline:
         click.echo(

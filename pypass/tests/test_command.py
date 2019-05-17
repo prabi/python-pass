@@ -131,6 +131,41 @@ class TestCommand(unittest.TestCase):
         )
         self.assertNotEqual(insert3.exit_code, 0)
 
+        # Should ask before overwriting existing entry without --force
+        # ... and deny by default.
+        insert4 = self.run_cli(['insert', 'test.com'], input='')
+
+        self.assertEqual(
+            insert4.output,
+            'An entry already exists for test.com. Overwrite it? [y/N] \n'
+        )
+
+        # ... and succeed when permitted.
+        insert5 = self.run_cli(['insert', 'test.com'], input='y\nnew\nnew\n')
+
+        self.assertEqual(
+            insert5.output,
+            'An entry already exists for test.com. Overwrite it? [y/N] y\n'
+            'Enter password for test.com: \n'
+            'Retype password for test.com: \n'
+        )
+
+        self.assertEqual(store.get_decrypted_password('test.com'), 'new')
+
+        # Insert a new password with --force
+        self.run_cli(['insert', '-fe', 'test6.com'], input='pass1')
+        self.assertEqual(store.get_decrypted_password('test6.com'), 'pass1')
+
+        # Overwrite existing entry with --force without question
+        insert7 = self.run_cli(['insert', '-fm', 'test.com'], input='a\nb\n')
+
+        self.assertEqual(
+            insert7.output,
+            'Enter contents of test.com and press Ctrl+D when finished:\n\n'
+        )
+
+        self.assertEqual(store.get_decrypted_password('test.com'), 'a\nb\n')
+
     def test_insert_and_show(self):
         # Insert a password for test.com
         self.run_cli(
