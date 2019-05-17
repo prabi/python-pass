@@ -150,4 +150,4 @@ This new command should connect to a server using an encrypted rsa key.
 - [X] ``--no-symbols, -n``
 - [X] ``--clip, -c``
 - [X] ``--in-place, -i`` modify only the first line, fails if ``pass-name`` doesn't exist
-- [ ] ``--force, -f``
+- [X] ``--force, -f``

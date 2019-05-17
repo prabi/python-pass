@@ -161,22 +161,27 @@ def insert(config, path, echo, multiline, force):
 @click.option('--no-symbols', '-n', is_flag=True)
 @click.option('--clip', '-c', is_flag=True)
 @click.option('--in-place', '-i', is_flag=True)
+@click.option('--force', '-f', is_flag=True)
 @click.argument('pass_name', type=click.STRING)
 @click.argument(
     'pass_length',
-    type=int,
-    required=False,
     envvar='PASSWORD_STORE_GENERATED_LENGTH',
     default=25
 )
 @click.pass_obj
-def generate(config, pass_name, pass_length, no_symbols, clip, in_place):
-    symbols = not no_symbols
+def generate(
+    config, pass_name, pass_length, no_symbols, clip, in_place, force
+):
+    if in_place and force:
+        sys.exit('--in-place and --force are mutually exclusive.')
+
+    if not is_writeable(config, pass_name, force or in_place):
+        sys.exit()
 
     password = config['password_store'].generate_password(
         pass_name,
         digits=True,
-        symbols=symbols,
+        symbols=not no_symbols,
         length=pass_length,
         first_line_only=in_place
     )

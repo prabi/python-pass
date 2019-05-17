@@ -522,6 +522,14 @@ class TestCommand(unittest.TestCase):
         decoded = store.get_decrypted_password('test.com')
         self.assertEqual(decoded, password)
 
+        self.run_cli(['generate', '-n', 'test.com'], input='')
+        decoded2 = store.get_decrypted_password('test.com')
+        self.assertEqual(decoded, decoded2)
+
+        self.run_cli(['generate', '-n', 'test.com', '20'], input='y')
+        decoded3 = store.get_decrypted_password('test.com')
+        self.assertNotEqual(decoded, decoded3)
+
     def test_generate_in_place(self):
         self.run_cli(['git', 'init'])
         store = PasswordStore(self.dir)
@@ -556,3 +564,22 @@ class TestCommand(unittest.TestCase):
         )
         xclip.wait()
         self.assertEqual(len(xclip.stdout.read().decode().strip()), 25)
+
+    def test_generate_force(self):
+        generate = self.run_cli(
+            ['generate', '-if', 'gen'],
+            expect_failure=True
+        )
+        self.assertNotEqual(generate.exit_code, 0)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, 'gen.gpg')))
+
+        self.run_cli(['generate', '-f', 'gen'])
+
+        store = PasswordStore(self.dir)
+        pwd2 = store.get_decrypted_password('gen')
+
+        self.run_cli(['generate', '-nf', 'gen', '20'])
+
+        pwd3 = store.get_decrypted_password('gen')
+        self.assertNotEqual(pwd2, pwd3)
+        self.assertIsNotNone(re.match('[a-zA-Z0-9]{20}$', pwd3))
