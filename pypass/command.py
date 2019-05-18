@@ -369,29 +369,40 @@ def grep(config, search_string):
 
 @main.command()
 @click.option('--recursive', '-r', is_flag=True)
+@click.option('--force', '-f', is_flag=True)
 @click.argument('path', type=click.STRING)
 @click.pass_obj
-def rm(config, recursive, path):
+def rm(config, recursive, force, path):
     resolved_path = os.path.realpath(
         os.path.join(config['password_store'].path, path)
     )
 
-    if os.path.isdir(resolved_path) is False:
-        resolved_path = os.path.join(
-            config['password_store'].path,
-            path + '.gpg'
-        )
+    is_dir = os.path.isdir(resolved_path)
+    if not is_dir:
+        resolved_path += '.gpg'
 
-    if os.path.exists(resolved_path):
+    if not os.path.exists(resolved_path):
+        sys.exit("Error: %s is not in the password store." % path)
+
+    if not force:
+        answer = click.prompt(
+            'Are you sure you would like to delete %s' % path,
+            prompt_suffix='? [y/N] ',
+            default='n',
+            show_default=False
+        )
+        if answer not in ('y', 'Y'):
+            sys.exit()
+
+    if is_dir:
         if recursive:
-            click.confirm("Recursively remove %s?" % resolved_path, abort=True)
             shutil.rmtree(resolved_path)
+            click.echo('removed directory \'%s\'' % resolved_path)
         else:
-            click.confirm("Really remove %s?" % resolved_path, abort=True)
-            os.remove(resolved_path)
-        click.echo("%s was removed from the store." % path)
+            sys.exit('cannot remove \'%s\': Is a directory' % resolved_path)
     else:
-        click.echo("Error: %s is not in the password store." % path)
+        os.remove(resolved_path)
+        click.echo('removed \'%s\'' % resolved_path)
 
 
 @main.command()

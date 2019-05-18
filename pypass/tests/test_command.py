@@ -258,15 +258,21 @@ class TestCommand(unittest.TestCase):
         with open(dummy_file_path, 'w') as dummy_file:
             dummy_file.write('test.com')
 
+        # Deny entry removal by default
+        self.run_cli(['rm', 'test.com'], input='')
         self.assertTrue(os.path.isfile(dummy_file_path))
+
         rm_result = self.run_cli(['rm', 'test.com'], input='y\n')
         self.assertFalse(os.path.isfile(dummy_file_path))
-        self.assertIsNotNone(
-            re.match("Really remove .*test.com.gpg?", rm_result.output)
+        self.assertEqual(
+            rm_result.output,
+            'Are you sure you would like to delete test.com? [y/N] y\n'
+            'removed \'%s\'\n' % dummy_file_path
         )
 
     def test_rm_dont_exist(self):
-        result = self.run_cli(['rm', 'test.com'])
+        result = self.run_cli(['rm', 'test.com'], expect_failure=True)
+        self.assertNotEqual(result.exit_code, 0)
         self.assertEqual(
             result.output,
             'Error: test.com is not in the password store.\n'
@@ -282,11 +288,45 @@ class TestCommand(unittest.TestCase):
         open(os.path.join(folder_path, 'passwordstore.org.gpg'), 'a').close()
         open(os.path.join(folder_path, 'test.com.gpg'), 'a').close()
 
+        # Delete a single file with --recursive
+        self.run_cli(['rm', '-r', 'test_folder/linux.ca'], input='y\n')
+        self.assertFalse(
+            os.path.isfile(os.path.join(folder_path, 'linux.ca.gpg'))
+        )
+
         rm_result = self.run_cli(['rm', '-r', 'test_folder'], input='y\n')
 
         self.assertFalse(os.path.isdir(folder_path))
-        self.assertIsNotNone(
-            re.match("Recursively remove .*test_folder?", rm_result.output)
+        self.assertEqual(
+            rm_result.output,
+            'Are you sure you would like to delete test_folder? [y/N] y\n'
+            'removed directory \'%s\'\n' % folder_path
+        )
+
+    def test_rm_force(self):
+        # Fail force deleting a non-existing entry
+        rm1 = self.run_cli(['rm', '-f', 'test.com'], expect_failure=True)
+        self.assertNotEqual(rm1.exit_code, 0)
+
+        # Set up a dummy directory with 3 entries
+        folder_path = os.path.join(self.dir, 'test_folder')
+        os.mkdir(folder_path)
+        open(os.path.join(folder_path, 'linux.ca.gpg'), 'a').close()
+        open(os.path.join(folder_path, 'passwordstore.org.gpg'), 'a').close()
+        open(os.path.join(folder_path, 'test.com.gpg'), 'a').close()
+
+        # Force delete a single file
+        self.run_cli(['rm', '-f', 'test_folder/linux.ca'])
+        self.assertFalse(
+            os.path.isfile(os.path.join(folder_path, 'linux.ca.gpg'))
+        )
+
+        # Force delete a whole directory without question
+        rm3 = self.run_cli(['rm', '-rf', 'test_folder'])
+        self.assertFalse(os.path.isdir(folder_path))
+        self.assertEqual(
+            rm3.output,
+            'removed directory \'%s\'\n' % folder_path
         )
 
     def test_mv_file(self):
