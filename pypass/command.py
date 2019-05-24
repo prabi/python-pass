@@ -241,9 +241,8 @@ def edit(config, path):
 @click.argument('path', type=click.STRING)
 @click.pass_obj
 def show(config, path, clip):
-    if path not in config['password_store'].get_passwords_list():
-        click.echo('Error: %s is not in the password store.' % path)
-        sys.exit(1)
+    if path not in config['password_store']:
+        sys.exit('Error: %s is not in the password store.' % path)
 
     decrypted_password = \
         config['password_store'].get_decrypted_password(path).strip()
@@ -373,36 +372,29 @@ def grep(config, search_string):
 @click.argument('path', type=click.STRING)
 @click.pass_obj
 def rm(config, recursive, force, path):
-    resolved_path = os.path.realpath(
-        os.path.join(config['password_store'].path, path)
-    )
 
-    is_dir = os.path.isdir(resolved_path)
-    if not is_dir:
-        resolved_path += '.gpg'
+    def approve():
+        if approve.d is None:
+            answer = click.prompt(
+                'Are you sure you would like to delete %s' % path,
+                prompt_suffix='? [y/N] ',
+                default='n',
+                show_default=False
+            )
+            approve.d = answer in ('y', 'Y')
+        return approve.d
+    approve.d = True if force else None
 
-    if not os.path.exists(resolved_path):
-        sys.exit("Error: %s is not in the password store." % path)
+    try:
+        store = config['password_store']
+        store.remove(path, recursive, on_entry=lambda _: approve())
+    except ValueError:
+        sys.exit('cannot remove \'%s\': Is a directory' % path)
+    except OSError:
+        sys.exit('Error: %s is not in the password store.' % path)
 
-    if not force:
-        answer = click.prompt(
-            'Are you sure you would like to delete %s' % path,
-            prompt_suffix='? [y/N] ',
-            default='n',
-            show_default=False
-        )
-        if answer not in ('y', 'Y'):
-            sys.exit()
-
-    if is_dir:
-        if recursive:
-            shutil.rmtree(resolved_path)
-            click.echo('removed directory \'%s\'' % resolved_path)
-        else:
-            sys.exit('cannot remove \'%s\': Is a directory' % resolved_path)
-    else:
-        os.remove(resolved_path)
-        click.echo('removed \'%s\'' % resolved_path)
+    if approve():
+        click.echo('removed \'%s\'' % path)
 
 
 @main.command()

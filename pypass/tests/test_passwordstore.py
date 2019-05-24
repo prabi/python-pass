@@ -69,6 +69,13 @@ class TestPasswordStore(unittest.TestCase):
         os.remove(gpg_id_path)
         self.assertRaises(Exception, PasswordStore, self.dir)
 
+    def test_contains(self):
+        store = PasswordStore(self.dir)
+        self.assertTrue('linux.ca' in store)
+        self.assertTrue('mozilla.org' not in store)
+        self.assertTrue('Email/email.com' in store)
+        self.assertFalse('email.com' in store)
+
     def test_get_passwords_list(self):
         store = PasswordStore(self.dir)
         self.assertListEqual(
@@ -317,3 +324,43 @@ class TestPasswordStore(unittest.TestCase):
         new_password, _, remainder = new_content.partition('\n')
         self.assertNotEqual(new_password, 'pw')
         self.assertEqual(remainder, 'remains intact')
+
+    def test_remove(self):
+        store = PasswordStore(self.dir)
+
+        store.remove('linux.ca')
+        self.assertFalse(os.path.isfile(
+            os.path.join(self.dir, 'linux.ca.gpg')
+        ))
+
+        self.assertRaises(OSError, store.remove, 'mozilla.org')
+
+        store.remove(
+            'test.com',
+            on_entry=lambda name: name.endswith('.org.gpg')
+        )
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.dir, 'test.com.gpg')
+        ))
+
+        self.assertRaises(ValueError, store.remove, 'Email')
+
+        store.remove(
+            'Email',
+            recursive=True,
+            on_entry=lambda name:
+                os.path.isdir(name) or name.endswith('.org.gpg')
+        )
+        email_path = os.path.join(self.dir, 'Email')
+        self.assertTrue(os.path.isdir(email_path))
+        self.assertTrue(os.path.isfile(
+            os.path.join(email_path, 'email.com.gpg')
+        ))
+
+        store.remove('Email', recursive=True)
+        self.assertFalse(os.path.isdir(email_path))
+
+    def test_remove_pruning(self):
+        store = PasswordStore(self.dir)
+        store.remove('Email/email.com')
+        self.assertFalse(os.path.isdir(os.path.join(self.dir, 'Email')))

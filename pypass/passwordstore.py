@@ -17,6 +17,7 @@
 #    along with python-pass.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import errno
 import os
 import subprocess
 import string
@@ -72,9 +73,7 @@ class PasswordStore(object):
         if self.uses_git:
             self.git_dir = git_dir
 
-    def _is_valid_store_subpath(self, file_location):
-        child_path = os.path.abspath(file_location)
-
+    def _is_valid_store_subpath(self, child_path):
         try:
             # Requires at least Python 3.5
             store_commonpath = os.path.commonpath([self.path])
@@ -84,6 +83,17 @@ class PasswordStore(object):
             # Pre-3.5 fallback
             commonprefix = os.path.commonprefix([self.path, child_path])
             return commonprefix.startswith(self.path)
+
+    def _resolve_path(self, path):
+        """Returns the absolute, validated path
+
+        :param path: A relative path in the password store
+        """
+        file_path = os.path.abspath(os.path.join(self.path, path))
+        if self._is_valid_store_subpath(file_path):
+            return file_path
+        else:
+            raise ValueError('Couldn\'t resolve %s' % path)
 
     def _get_gpg_id(self, file_location):
         file_path = os.path.abspath(file_location)
@@ -99,20 +109,44 @@ class PasswordStore(object):
 
         raise Exception("could not find .gpg-id file")
 
+    def __contains__(self, path):
+        """Checks whether `path` is an existing entry
+
+        :param path: The relative path of a possible entry
+        :returns: True, if the entry exists
+        """
+        return os.path.isfile('%s.gpg' % self._resolve_path(path))
+
+    def _walk(self, path='', on_dir=None, on_file=None, topdown=True):
+        """Walks the password store from `path` in given direction
+
+        :param path: The relative path of the root of walk. Defaults to ''
+        :param on_dir: Called with the absolute path of every visited subdir
+        :param on_file: Called with the absolute path of every visited file
+        :param topdown: Indicates the direction of walk. Defaults to True
+        """
+        root = self._resolve_path(path)
+        it = os.walk(root, topdown=topdown, followlinks=True)
+
+        for dirpath, dirnames, filenames in it:
+            if on_dir is not None:
+                for dirname in dirnames:
+                    on_dir(os.path.join(dirpath, dirname))
+            if on_file is not None:
+                for filename in filenames:
+                    on_file(os.path.join(dirpath, filename))
+
     def get_passwords_list(self):
         """Returns a list of the passwords in the store
 
         :returns: Example: ['Email/bob.net', 'example.com']
         """
         passwords = []
-
-        for root, dirnames, filenames in os.walk(self.path):
-            for filename in filenames:
-                if filename.endswith('.gpg'):
-                    path = os.path.join(root, filename.replace('.gpg', ''))
-                    simplified_path = path.replace(self.path + '/', '')
-                    passwords.append(simplified_path)
-
+        offset = len(self._resolve_path('')) + 1
+        self._walk(
+            on_file=lambda path:
+                path.endswith('.gpg') and passwords.append(path[offset:-4])
+        )
         return passwords
 
     def get_decrypted_password(self, path, entry=None):
@@ -122,12 +156,7 @@ class PasswordStore(object):
                      'email.com'
         :param entry: The entry to retreive. (EntryType enum)
         """
-        passfile_path = os.path.realpath(
-            os.path.join(
-                self.path,
-                path + '.gpg'
-            )
-        )
+        passfile_path = '%s.gpg' % self._resolve_path(path)
 
         gpg = subprocess.Popen(
             [
@@ -176,9 +205,7 @@ class PasswordStore(object):
         :param password: The password to insert, can be multi-line
         """
 
-        passfile_path = os.path.realpath(
-            os.path.join(self.path, path + '.gpg')
-        )
+        passfile_path = '%s.gpg' % self._resolve_path(path)
 
         if not os.path.isdir(os.path.dirname(passfile_path)):
             os.makedirs(os.path.dirname(passfile_path))
@@ -238,6 +265,55 @@ class PasswordStore(object):
         self.insert_password(path, password + content_wo_pass)
 
         return password
+
+    def remove(self, path, recursive=False, on_entry=lambda _: True):
+        """Removes the entry or directory at `path`
+
+        First, the removal of an entry at `path` is attempted.  If this
+        succeeds, the function returns.  Second, a directory's removal is
+        attempted, but only if `recursive` is true (it's false by default),
+        otherwise `ValueError` is thrown.  If nothing was found at `path`,
+        an `OSError` is thrown.
+
+        You can provide a callback function `on_entry`, that is called with
+        every file's or directory's absolute path, that is a candidate for
+        removal.  The callback's return value is interpreted as a `bool`,
+        and if it's true, the corresponding file or directory (if empty) is
+        removed. `on_entry` is a constant `True` by default.
+        """
+        resolved_path = self._resolve_path(path)
+
+        # Remove the path named entry
+        if path in self:
+            resolved_path += '.gpg'
+            if on_entry(resolved_path):
+                os.remove(resolved_path)
+
+                # Prune emtpy parent directories
+                try:
+                    os.removedirs(os.path.dirname(resolved_path))
+                except OSError:
+                    pass
+
+        # Or remove the directory at path
+        elif os.path.isdir(resolved_path):
+            if not recursive:
+                raise ValueError(
+                    '%s is a directory, but recursive is False' % path
+                )
+            self._walk(
+                path,
+                topdown=False,
+                on_dir=lambda name: on_entry(name) and os.rmdir(name),
+                on_file=lambda name: on_entry(name) and os.remove(name)
+            )
+            try:
+                on_entry(resolved_path) and os.rmdir(resolved_path)
+            except OSError:
+                pass
+
+        else:
+            raise OSError(errno.ENOENT, 'Couldn\'t find requested item', path)
 
     @staticmethod
     def init(gpg_id, path, clone_url=None):

@@ -267,7 +267,7 @@ class TestCommand(unittest.TestCase):
         self.assertEqual(
             rm_result.output,
             'Are you sure you would like to delete test.com? [y/N] y\n'
-            'removed \'%s\'\n' % dummy_file_path
+            'removed \'test.com\'\n'
         )
 
     def test_rm_dont_exist(self):
@@ -300,8 +300,35 @@ class TestCommand(unittest.TestCase):
         self.assertEqual(
             rm_result.output,
             'Are you sure you would like to delete test_folder? [y/N] y\n'
-            'removed directory \'%s\'\n' % folder_path
+            'removed \'test_folder\'\n'
         )
+
+    def test_rm_same_name_entry_and_dir(self):
+        # Create same name dummy entry and directory
+        folder_path = os.path.join(self.dir, 'test')
+        os.mkdir(folder_path)
+        open(os.path.join(self.dir, 'test.gpg'), 'a').close()
+
+        # Removing 'test' leaves the directory intact
+        self.run_cli(['rm', '-r', 'test'], input='y\n')
+        self.assertFalse(os.path.isfile(os.path.join(self.dir, 'test.gpg')))
+        self.assertTrue(os.path.isdir(folder_path))
+
+        # Second identical invocation gets rid of the directory
+        self.run_cli(['rm', '-r', 'test'], input='y\n')
+        self.assertFalse(os.path.isdir(folder_path))
+
+    def test_rm_pruning(self):
+        folder_path = os.path.join(self.dir, 'parent')
+        os.mkdir(folder_path)
+        open(os.path.join(folder_path, 'nested.gpg'), 'a').close()
+        self.assertTrue(os.path.isfile(
+            os.path.join(folder_path, 'nested.gpg')
+        ))
+
+        # Removing 'nested' prunes the empty 'parent' directory
+        self.run_cli(['rm', 'parent/nested'], input='y\n')
+        self.assertFalse(os.path.isdir(folder_path))
 
     def test_rm_force(self):
         # Fail force deleting a non-existing entry
@@ -324,10 +351,7 @@ class TestCommand(unittest.TestCase):
         # Force delete a whole directory without question
         rm3 = self.run_cli(['rm', '-rf', 'test_folder'])
         self.assertFalse(os.path.isdir(folder_path))
-        self.assertEqual(
-            rm3.output,
-            'removed directory \'%s\'\n' % folder_path
-        )
+        self.assertEqual(rm3.output, 'removed \'test_folder\'\n')
 
     def test_mv_file(self):
         old_file_path = os.path.join(self.dir, 'move_me.gpg')
