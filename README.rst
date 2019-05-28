@@ -118,7 +118,7 @@ This new command should connect to a server using an encrypted rsa key.
 -------------
 
 - [X] ``pypass cp old-path new-pah`` copies a password to a new path
-- [ ] Dont overwrite
+- [X] Interactively ask before overwrite, unless `--force` is used
 
 ``pypass mv``
 -------------

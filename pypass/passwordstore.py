@@ -20,6 +20,7 @@
 import errno
 import os
 import subprocess
+import shutil
 import string
 import re
 
@@ -279,7 +280,7 @@ class PasswordStore(object):
         every file's or directory's absolute path, that is a candidate for
         removal.  The callback's return value is interpreted as a `bool`,
         and if it's true, the corresponding file or directory (if empty) is
-        removed. `on_entry` is a constant `True` by default.
+        removed.  `on_entry` is a constant `True` by default.
         """
         resolved_path = self._resolve_path(path)
 
@@ -314,6 +315,68 @@ class PasswordStore(object):
 
         else:
             raise OSError(errno.ENOENT, 'Couldn\'t find requested item', path)
+
+    def copy(self, old_path, new_path, on_overwrite=lambda _, __: True):
+        """Copies the entry or directory at `old_path` to `new_path`
+
+        First, copying of an entry at `old_path` is attempted.  If this
+        succeeds, the function returns.  Second, a directory tree's copying
+        is attempted.  If nothing was found at `old_path`, an `OSError` with
+        error code `ENOENT` is thrown.
+
+        If `new_path` points to an existing directory, the content of
+        `old_path` is copied inside of `new_path`.  Otherwise, `new_path`
+        is interpreted as the name of the destination file or root directory.
+
+        You can provide a callback function `on_overwrite`, that is called
+        whenever a file would be overwritten.  It receives two arguments:
+        the absolute paths of the copied and destination files.  The return
+        value is interpreted as a `bool`, and if it's true, the destination
+        file is overwritten with the copied one.  `on_overwrite` is a constant
+        `True` by default.
+        """
+        resolved_old_path = self._resolve_path(old_path)
+        resolved_new_path = self._resolve_path(new_path)
+
+        if os.path.isdir(resolved_new_path):
+            resolved_new_path = os.path.join(
+                resolved_new_path,
+                os.path.basename(old_path)
+            )
+
+        if old_path in self:
+            resolved_old_path += '.gpg'
+            resolved_new_path += '.gpg'
+            if (not os.path.isfile(resolved_new_path) or
+                    on_overwrite(resolved_old_path, resolved_new_path)):
+                shutil.copy2(resolved_old_path, resolved_new_path)
+
+        elif os.path.isdir(resolved_old_path):
+            try:
+                os.makedirs(resolved_new_path)
+            except OSError:
+                pass
+            offset = len(resolved_old_path) + 1
+
+            def new(old):
+                return os.path.join(resolved_new_path, old[offset:])
+
+            self._walk(
+                resolved_old_path,
+                on_dir=lambda old:
+                    old != resolved_new_path and os.mkdir(new(old)),
+                on_file=lambda old:
+                    (not os.path.isfile(new(old)) or
+                        on_overwrite(old, new(old))) and
+                    shutil.copy2(old, new(old))
+            )
+
+        else:
+            raise OSError(
+                errno.ENOENT,
+                'Couldn\'t find requested item to copy',
+                old_path
+            )
 
     @staticmethod
     def init(gpg_id, path, clone_url=None):

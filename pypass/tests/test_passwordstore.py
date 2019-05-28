@@ -364,3 +364,27 @@ class TestPasswordStore(unittest.TestCase):
         store = PasswordStore(self.dir)
         store.remove('Email/email.com')
         self.assertFalse(os.path.isdir(os.path.join(self.dir, 'Email')))
+
+    def test_copy(self):
+        store = PasswordStore(self.dir)
+
+        with open(os.path.join(self.dir, 'linux.ca.gpg'), 'w') as f:
+            f.write('copy this')
+
+        store.copy('linux.ca', 'windows.ms')
+        with open(os.path.join(self.dir, 'windows.ms.gpg')) as f:
+            self.assertEqual(f.read(), 'copy this')
+
+        store.copy('linux.ca', 'Email/email.com')
+        with open(os.path.join(self.dir, 'Email', 'email.com.gpg')) as f:
+            self.assertEqual(f.read(), 'copy this')
+
+        store.copy('linux.ca', 'test.com', on_overwrite=lambda _, __: False)
+        with open(os.path.join(self.dir, 'test.com.gpg')) as f:
+            self.assertEqual(len(f.read()), 0)
+
+        store.copy('Email', 'Work')
+        with open(os.path.join(self.dir, 'Work', 'email.com.gpg')) as f:
+            self.assertEqual(f.read(), 'copy this')
+
+        self.assertRaises(OSError, store.copy, 'foo', 'bar')

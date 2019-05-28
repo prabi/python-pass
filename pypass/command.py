@@ -31,28 +31,25 @@ from pypass.entry_type import EntryType
 from pypass import PasswordStore
 
 
-def is_writeable(config, path, force):
+def is_writeable(path, force, prompt):
     '''Checks whether writing to `path` is permitted
 
     If `force` is `True` or `path` doesn't exist, it is certainly writeable.
-    Otherwise it's writeable if the user permits it by answering a prompt.
+    Otherwise it's writeable if the user permits it by answering `prompt`.
 
-    :param config: `click.Context.obj` containing the store instance.
-    :param path: The relative path of the manipulated file.
+    :param path: The absolute path of the manipulated file.
     :param force: A `bool` flag. If set, overwrite is forced without asking.
+    :param prompt: The text of the prompt asking user for permission.
     :returns: `True`, iif `path` doesn't exist or it can be overwritten.
     '''
     if force:
         return True
 
-    real_path = os.path.realpath(
-        os.path.join(config['password_store'].path, path + '.gpg')
-    )
-    if not os.path.isfile(real_path):
+    if not os.path.isfile(path):
         return True
 
     answer = click.prompt(
-        'An entry already exists for %s. Overwrite it' % path,
+        prompt,
         prompt_suffix='? [y/N] ',
         default='n',
         show_default=False
@@ -127,7 +124,11 @@ def insert(config, path, echo, multiline, force):
     if echo and multiline:
         sys.exit('--echo and --multiline are mutually exclusive.')
 
-    if not is_writeable(config, path, force):
+    if not is_writeable(
+        '%s.gpg' % config['password_store']._resolve_path(path),
+        force,
+        'An entry already exists for %s. Overwrite it' % path
+    ):
         sys.exit()
 
     if multiline:
@@ -175,7 +176,11 @@ def generate(
     if in_place and force:
         sys.exit('--in-place and --force are mutually exclusive.')
 
-    if not is_writeable(config, pass_name, force or in_place):
+    if not is_writeable(
+        '%s.gpg' % config['password_store']._resolve_path(pass_name),
+        force or in_place,
+        'An entry already exists for %s. Overwrite it' % pass_name
+    ):
         sys.exit()
 
     password = config['password_store'].generate_password(
@@ -398,38 +403,23 @@ def rm(config, recursive, force, path):
 
 
 @main.command()
+@click.option('--force', '-f', is_flag=True)
 @click.argument('old_path', type=click.STRING)
 @click.argument('new_path', type=click.STRING)
 @click.pass_obj
-def cp(config, old_path, new_path):
-    resolved_old_path = os.path.realpath(
-        os.path.join(config['password_store'].path, old_path)
-    )
-
-    if os.path.isdir(resolved_old_path):
-        shutil.copytree(
-            resolved_old_path,
-            os.path.realpath(
-                os.path.join(config['password_store'].path, new_path)
+def cp(config, force, old_path, new_path):
+    try:
+        config['password_store'].copy(
+            old_path,
+            new_path,
+            on_overwrite=lambda _, new: is_writeable(
+                new,
+                force,
+                'overwrite \'%s\'' % new
             )
         )
-    else:
-        resolved_old_path = os.path.realpath(
-            os.path.join(config['password_store'].path, old_path + '.gpg')
-        )
-
-        if os.path.isfile(resolved_old_path):
-            shutil.copy(
-                resolved_old_path,
-                os.path.realpath(
-                    os.path.join(
-                        config['password_store'].path,
-                        new_path + '.gpg'
-                    )
-                )
-            )
-        else:
-            click.echo("Error: %s is not in the password store" % old_path)
+    except OSError:
+        sys.exit('Error: %s is not in the password store.' % old_path)
 
 
 @main.command()
