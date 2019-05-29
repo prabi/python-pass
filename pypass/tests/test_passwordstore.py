@@ -374,17 +374,71 @@ class TestPasswordStore(unittest.TestCase):
         store.copy('linux.ca', 'windows.ms')
         with open(os.path.join(self.dir, 'windows.ms.gpg')) as f:
             self.assertEqual(f.read(), 'copy this')
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.dir, 'linux.ca.gpg')
+        ))
 
         store.copy('linux.ca', 'Email/email.com')
         with open(os.path.join(self.dir, 'Email', 'email.com.gpg')) as f:
             self.assertEqual(f.read(), 'copy this')
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.dir, 'linux.ca.gpg')
+        ))
 
         store.copy('linux.ca', 'test.com', on_overwrite=lambda _, __: False)
         with open(os.path.join(self.dir, 'test.com.gpg')) as f:
             self.assertEqual(len(f.read()), 0)
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.dir, 'linux.ca.gpg')
+        ))
 
         store.copy('Email', 'Work')
         with open(os.path.join(self.dir, 'Work', 'email.com.gpg')) as f:
             self.assertEqual(f.read(), 'copy this')
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.dir, 'Email', 'email.com.gpg')
+        ))
 
         self.assertRaises(OSError, store.copy, 'foo', 'bar')
+
+    def test_rename(self):
+        store = PasswordStore(self.dir)
+
+        with open(os.path.join(self.dir, 'linux.ca.gpg'), 'w') as f:
+            f.write('move this')
+
+        store.rename('linux.ca', 'windows.ms')
+        with open(os.path.join(self.dir, 'windows.ms.gpg')) as f:
+            self.assertEqual(f.read(), 'move this')
+        self.assertFalse(os.path.isfile(
+            os.path.join(self.dir, 'linux.ca.gpg')
+        ))
+
+        store.rename('windows.ms', 'Email/email.com')
+        with open(os.path.join(self.dir, 'Email', 'email.com.gpg')) as f:
+            self.assertEqual(f.read(), 'move this')
+        self.assertFalse(os.path.isfile(
+            os.path.join(self.dir, 'windows.ms.gpg')
+        ))
+
+        store.rename(
+            'Email/email.com',
+            'test.com',
+            on_overwrite=lambda _, __: False
+        )
+        with open(os.path.join(self.dir, 'test.com.gpg')) as f:
+            self.assertEqual(len(f.read()), 0)
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.dir, 'Email', 'email.com.gpg')
+        ))
+
+        store.rename('Email', 'Work')
+        with open(os.path.join(self.dir, 'Work', 'email.com.gpg')) as f:
+            self.assertEqual(f.read(), 'move this')
+        self.assertFalse(os.path.isdir(os.path.join(self.dir, 'Email')))
+
+        self.assertRaises(OSError, store.rename, 'foo', 'bar')
+
+        os.makedirs(os.path.join(self.dir, 'Life', 'Work'))
+        open(os.path.join(self.dir, 'Life', 'Work', 'baz.gpg'), 'a').close()
+        self.assertRaises(OSError, store.rename, 'Work', 'Life')

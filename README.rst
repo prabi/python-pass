@@ -123,8 +123,8 @@ This new command should connect to a server using an encrypted rsa key.
 ``pypass mv``
 -------------
 
-- [X] ``pypass mv old-path new-path`` moves a password to a new path
-- [ ] Dont overwrite
+- [X] ``pypass mv old-path new-path`` moves a password or folder to a new path
+- [X] Ask before overwrite, unless `--force` is used
 
 ``pypass git``
 --------------

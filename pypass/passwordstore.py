@@ -349,6 +349,10 @@ class PasswordStore(object):
             resolved_new_path += '.gpg'
             if (not os.path.isfile(resolved_new_path) or
                     on_overwrite(resolved_old_path, resolved_new_path)):
+                try:
+                    os.makedirs(os.path.dirname(resolved_new_path))
+                except OSError:
+                    pass
                 shutil.copy2(resolved_old_path, resolved_new_path)
 
         elif os.path.isdir(resolved_old_path):
@@ -375,6 +379,65 @@ class PasswordStore(object):
             raise OSError(
                 errno.ENOENT,
                 'Couldn\'t find requested item to copy',
+                old_path
+            )
+
+    def rename(self, old_path, new_path, on_overwrite=lambda _, __: True):
+        """Renames the entry or directory at `old_path` to `new_path`
+
+        First, renaming the entry at `old_path` is attempted.  If this
+        succeeds, the function returns.  Second, a directory's renaming
+        is attempted.  If nothing was found at `old_path`, an `OSError`
+        with error code `ENOENT` is thrown.
+
+        If `new_path` points to an existing directory, the content of
+        `old_path` is moved inside of `new_path`.  Otherwise, `new_path`
+        is interpreted as the name of the destination file or directory.
+        If the resulting new name still points to a directory, it's only
+        overwritten if it's empty, else `OSError` is thrown with error
+        code `ENOTEMPTY`.
+
+        You can provide a callback function `on_overwrite`, that is called
+        once if a file or directory would be overwritten.  It receives two
+        arguments: the old and new absolute paths.  The return value is
+        interpreted as a `bool`, and if it's true, the destination file or
+        directory is overwritten with the renamed one.  `on_overwrite` is
+        a constant `True` by default.
+        """
+        resolved_old_path = self._resolve_path(old_path)
+        resolved_new_path = self._resolve_path(new_path)
+
+        if os.path.isdir(resolved_new_path):
+            resolved_new_path = os.path.join(
+                resolved_new_path,
+                os.path.basename(old_path)
+            )
+
+        if old_path in self:
+            resolved_old_path += '.gpg'
+            resolved_new_path += '.gpg'
+            if (not os.path.isfile(resolved_new_path) or
+                    on_overwrite(resolved_old_path, resolved_new_path)):
+                os.renames(resolved_old_path, resolved_new_path)
+
+        elif os.path.isdir(resolved_old_path):
+            if os.path.isdir(resolved_new_path):
+                if len(os.listdir(resolved_new_path)) > 0:
+                    raise OSError(
+                        errno.ENOTEMPTY,
+                        'New name is a non-empty directory',
+                        resolved_new_path
+                    )
+                elif on_overwrite(resolved_old_path, resolved_new_path):
+                    os.rmdir(resolved_new_path)
+                else:
+                    return
+            os.renames(resolved_old_path, resolved_new_path)
+
+        else:
+            raise OSError(
+                errno.ENOENT,
+                'Couldn\'t find requested item to rename',
                 old_path
             )
 

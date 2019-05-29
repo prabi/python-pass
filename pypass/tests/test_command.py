@@ -364,26 +364,76 @@ class TestCommand(unittest.TestCase):
         self.assertFalse(os.path.isfile(old_file_path))
         self.assertTrue(os.path.isfile(os.path.join(self.dir, 'i_moved.gpg')))
 
+    def test_mv_overwrite(self):
+        old_path = os.path.join(self.dir, 'move_me.gpg')
+        with open(old_path, 'a') as f:
+            f.write('content')
+        new_path = os.path.join(self.dir, 'destination.gpg')
+        open(new_path, 'a').close()
+
+        # Deny overwrite by default
+        self.run_cli(['mv', 'move_me', 'destination'], input='')
+        with open(new_path) as f:
+            self.assertEqual(len(f.read()), 0)
+
+        # Overwrite when explicitly permitted
+        self.run_cli(['mv', 'move_me', 'destination'], input='y\n')
+        with open(new_path) as f:
+            self.assertEqual(f.read(), 'content')
+        self.assertFalse(os.path.isfile(old_path))
+
+    def test_mv_force(self):
+        old_path = os.path.join(self.dir, 'move_me.gpg')
+        with open(old_path, 'a') as f:
+            f.write('content')
+        new_path = os.path.join(self.dir, 'destination.gpg')
+        open(new_path, 'a').close()
+
+        # Overwrite with --force without question
+        self.run_cli(['mv', '-f', 'move_me', 'destination'])
+        with open(new_path) as f:
+            self.assertEqual(f.read(), 'content')
+        self.assertFalse(os.path.isfile(old_path))
+
+    def test_mv_file_into_folder(self):
+        folder_path = os.path.join(self.dir, 'test_folder')
+        os.mkdir(folder_path)
+        self.assertTrue(os.path.isdir(folder_path))
+
+        old_path = os.path.join(self.dir, 'test.com.gpg')
+        open(old_path, 'a').close()
+
+        self.run_cli(['mv', 'test.com', 'test_folder'])
+
+        self.assertFalse(os.path.isfile(old_path))
+        self.assertTrue(os.path.isfile(
+            os.path.join(folder_path, 'test.com.gpg')
+        ))
+
     def test_mv_folder(self):
         folder_path = os.path.join(self.dir, 'test_folder')
         os.mkdir(folder_path)
         self.assertTrue(os.path.isdir(folder_path))
 
-        # Create three dummy files
-        open(os.path.join(folder_path, 'linux.ca.gpg'), 'a').close()
-        open(os.path.join(folder_path, 'passwordstore.org.gpg'), 'a').close()
+        # Create a dummy file
         open(os.path.join(folder_path, 'test.com.gpg'), 'a').close()
 
-        self.run_cli(['mv', 'test_folder', 'moved_folder'])
+        self.run_cli(['mv', 'test_folder', 'nested/moved_folder'])
 
+        moved_folder_path = os.path.join(self.dir, 'nested', 'moved_folder')
         self.assertFalse(os.path.isdir(folder_path))
-        self.assertTrue(os.path.isdir(os.path.join(self.dir, 'moved_folder')))
+        self.assertTrue(os.path.isfile(
+            os.path.join(moved_folder_path, 'test.com.gpg')
+        ))
 
     def test_mv_error(self):
-        mv_result = self.run_cli(['mv', 'test_folder', 'moved_folder'])
+        mv_result = self.run_cli(
+            ['mv', 'test_folder', 'moved_folder'],
+            expect_failure=True
+        )
         self.assertEqual(
             mv_result.output,
-            'Error: test_folder is not in the password store\n'
+            'Error: test_folder is not in the password store.\n'
         )
 
     def test_cp_file(self):
@@ -415,6 +465,7 @@ class TestCommand(unittest.TestCase):
         self.run_cli(['cp', 'copy_me', 'destination'], input='y\n')
         with open(new_path) as f:
             self.assertEqual(f.read(), 'content')
+        self.assertTrue(os.path.isfile(old_path))
 
     def test_cp_force(self):
         old_path = os.path.join(self.dir, 'copy_me.gpg')
@@ -427,6 +478,7 @@ class TestCommand(unittest.TestCase):
         self.run_cli(['cp', '-f', 'copy_me', 'destination'])
         with open(new_path) as f:
             self.assertEqual(f.read(), 'content')
+        self.assertTrue(os.path.isfile(old_path))
 
     def test_cp_file_into_folder(self):
         folder_path = os.path.join(self.dir, 'test_folder')
@@ -461,12 +513,12 @@ class TestCommand(unittest.TestCase):
         ))
 
     def test_cp_error(self):
-        mv_result = self.run_cli(
+        cp_result = self.run_cli(
             ['cp', 'test_folder', 'moved_folder'],
             expect_failure=True
         )
         self.assertEqual(
-            mv_result.output,
+            cp_result.output,
             'Error: test_folder is not in the password store.\n'
         )
 

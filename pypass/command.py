@@ -18,8 +18,8 @@
 #
 
 import os
+import errno
 import subprocess
-import shutil
 import sys
 import tempfile
 
@@ -423,38 +423,26 @@ def cp(config, force, old_path, new_path):
 
 
 @main.command()
+@click.option('--force', '-f', is_flag=True)
 @click.argument('old_path', type=click.STRING)
 @click.argument('new_path', type=click.STRING)
 @click.pass_obj
-def mv(config, old_path, new_path):
-    resolved_old_path = os.path.realpath(
-        os.path.join(config['password_store'].path, old_path)
-    )
-
-    if os.path.isdir(resolved_old_path):
-        shutil.move(
-            resolved_old_path,
-            os.path.realpath(
-                os.path.join(config['password_store'].path, new_path)
+def mv(config, force, old_path, new_path):
+    try:
+        config['password_store'].rename(
+            old_path,
+            new_path,
+            on_overwrite=lambda _, new: is_writeable(
+                new,
+                force,
+                'overwrite \'%s\'' % new
             )
         )
-    else:
-        resolved_old_path = os.path.realpath(
-            os.path.join(config['password_store'].path, old_path + '.gpg')
-        )
-
-        if os.path.isfile(resolved_old_path):
-            shutil.move(
-                resolved_old_path,
-                os.path.realpath(
-                    os.path.join(
-                        config['password_store'].path,
-                        new_path + '.gpg'
-                    )
-                )
-            )
-        else:
-            click.echo("Error: %s is not in the password store" % old_path)
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            sys.exit('Error: %s is not in the password store.' % old_path)
+        elif e.errno == errno.ENOTEMPTY:
+            sys.exit('cannot move to %s: Directory not empty' % e.filename)
 
 
 @main.command(context_settings={'ignore_unknown_options': True})
