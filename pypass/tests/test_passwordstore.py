@@ -361,9 +361,13 @@ class TestPasswordStore(unittest.TestCase):
         self.assertFalse(os.path.isdir(email_path))
 
     def test_remove_pruning(self):
+        # Remove Email/.gpg-id to get a subdirectory with only one entry
+        dir_path = os.path.join(self.dir, 'Email')
+        os.remove(os.path.join(dir_path, '.gpg-id'))
+
         store = PasswordStore(self.dir)
         store.remove('Email/email.com')
-        self.assertFalse(os.path.isdir(os.path.join(self.dir, 'Email')))
+        self.assertFalse(os.path.isdir(dir_path))
 
     def test_copy(self):
         store = PasswordStore(self.dir)
